@@ -1,0 +1,232 @@
+# Justin Schiller
+# CSCI 3202
+# Assignment 6
+# October 23, 2015
+
+import getopt
+import sys
+
+# Define node class to represent each node in the Bayes Net
+class Node:
+	def __init__(self):
+		self.marginal = 0
+		self.conditionals = {}
+		self.name = ""
+		self.parents = []
+		self.children = []
+
+# Function to create the Bayes network with appropriate nodes
+def createNetwork():
+	pNode = Node()
+	sNode = Node()
+	cNode = Node()
+	xNode = Node()
+	dNode = Node()
+	
+	pNode.name = "pollution"
+	sNode.name = "smoker"
+	cNode.name = "cancer"
+	xNode.name = "xray"
+	dNode.name = "dyspnoea"
+	
+	pNode.children.append(cNode)
+	sNode.children.append(cNode)
+	cNode.children.append(xNode)
+	cNode.children.append(dNode)
+	
+	cNode.parents.append(sNode)
+	cNode.parents.append(pNode)
+	xNode.parents.append(cNode)
+	dNode.parents.append(cNode)
+	
+	pNode.marginal = 0.9
+	sNode.marginal = 0.3
+	
+	cNode.conditionals["~ps"] = 0.05
+	cNode.conditionals["~p~s"] = 0.02
+	cNode.conditionals["ps"] = 0.03
+	cNode.conditionals["p~s"] = 0.001
+	xNode.conditionals["c"] = 0.9
+	xNode.conditionals["~c"] = 0.2
+	dNode.conditionals["c"] = 0.65
+	dNode.conditionals["~c"] = 0.3
+	
+	nodeNet = {"smoker": sNode, "pollution": pNode, "cancer": cNode, "xray": xNode, "dyspnoea": dNode}
+	return nodeNet
+
+def argArray(args):
+	arr=[]
+	notFlag=False
+	for element in args:
+		if notFlag==True:
+			arr.append("~"+element)
+			notFlag=False
+		elif element=="~":
+			notFlag=True
+		else:
+			arr.append(element)
+	return arr
+
+def parseDist(arg):
+	varList = []
+	a=argArray(arg)
+	length = len(a)
+	for i in range(0, length):
+		newVar = []
+		if len(varList) == 0:
+			if a[i][0] != "~":
+				newVar.append(a[i])
+				newVar.append("~" + a[i])
+			else:
+				newVar.append(a[i][1])
+				newVar.append(a[i])
+		else:
+			for var in varList:
+				if a[i][0] != "~":
+					newVar.append(var + a[i])
+					newVar.append(var + "~" + a[i])
+				else:
+					newVar.append(var + a[i][1])
+					newVar.append(var + a[i])
+		varList = newVar
+		i = i + 1
+	return varList
+
+def jointDist(net,varList):
+	opts={}
+	for var in varList:
+		opts[var]=calcJoint(net,var)
+	return opts	
+	
+def setPrior(net, arg, value):
+	if arg == "p" or arg == "P":
+		node = net["pollution"]
+		node.marginal = value
+	elif arg == "s" or arg == "S":
+		node = net["smoker"]
+		node.marginal = value
+	else:
+		print("Cannot set the prior for this variable")
+	
+def calcMarginal(net, arg):
+	if arg == "P" or arg == "p":
+		node = net["pollution"]
+		return (node.marginal)
+	elif arg=="~p":
+		return 1 - calcMarginal(net,"p")
+	elif arg == "S" or arg == "s":
+		node = net["smoker"]
+		return (node.marginal)
+	elif arg=="~s":
+		return 1 - calcMarginal(net,"s")
+	elif arg == "C" or arg == "c":
+		node = net["cancer"]
+		conditionals = node.conditionals
+		pollution = net["pollution"]
+		smoker = net["smoker"]
+		marginal = conditionals["~ps"]*(1-pollution.marginal)*(smoker.marginal) + conditionals["~p~s"]*(1-pollution.marginal)*(1-smoker.marginal) + conditionals["ps"]*pollution.marginal*smoker.marginal + conditionals["p~s"]*pollution.marginal*(1-smoker.marginal)
+		return (marginal)
+	elif arg=="~c":
+		return 1 - calcMarginal(net,"c")
+	elif arg == "X" or arg == "x":
+		node = net["xray"]
+		conditionals = node.conditionals
+		cancerMarginal = calcMarginal(net, "C")
+		marginal = conditionals["c"]*cancerMarginal + conditionals["~c"]*(1-cancerMarginal)
+		return (marginal)
+	elif arg=="~x":
+		return 1 - calcMarginal(net,"x")	
+	elif arg == "D" or arg == "d":
+		node = net["dyspnoea"]
+		conditionals = node.conditionals
+		cancerMarginal = calcMarginal(net, "c")
+		marginal = conditionals["c"]*cancerMarginal + conditionals["~c"]*(1-cancerMarginal)
+		return (marginal)
+	elif arg=="~d":
+		return 1 - calcMarginal(net,"d")
+	else:
+		print("Requesting marginal distribution for an invalid variable")
+
+# Function to calculate the conditional probability
+def calcConditional(net, arg, con):
+	a=argArray(arg)
+	c=argArray(con)
+	if len(a) == 1:
+		if a[0] == "p" or a[0] == "P" or a[0] =="~p":
+			return (calcJoint(net,(a[0] + con))/calcJoint(net,con))
+		elif a[0] == "s" or a[0]=="S" or a[0]=="~s":
+			return (calcJoint(net,(arg[0] + con))/calcJoint(net,con))
+		elif a[0] == "c" or a[0]=="C" or a[0]=="~c":
+			Lnode = net["cancer"]
+			if con in Lnode.conditionals:
+				conditional = Lnode.conditionals[con]
+				if a[0]=="~c":
+					conditional=1-conditional
+				return(conditional)
+		elif a[0] == "x" or a[0]=="X" or a[0]=="~x":
+			Lnode = net["xray"]
+			if con in Lnode.conditionals:
+				conditional = Lnode.conditionals[con]
+				if a[0]=="~x":
+					conditional=1-conditional
+				return(conditional)
+		elif a[0] == "d" or a[0]=="D" or a[0]=="~d":
+			Lnode = net["dyspnoea"]
+			if con in Lnode.conditionals:
+				conditional = Lnode.conditionals[con]
+				if a[0]=="~d":
+					conditional=1-conditional
+				return(conditional)
+		else:
+			print("Invalid conditional probability")
+	return (calcJoint(net,(arg + con))/calcJoint(net,con))
+			
+def calcJoint(net,arg):
+	arg=argArray(arg)
+	count = 0
+	for x in arg:
+		if count==0:
+			probability = calcMarginal(net,x)
+			count=1
+		elif count==1:
+			probability = probability*calcConditional(net,x,arg[0])
+			count=2
+		elif count==2:
+			probability = probability*calcConditional(net,x,arg[0] + arg[1])
+			count=3
+		else:
+			print("Code is not built to handle joint distributions with more than 3 elements")
+	return probability
+		
+# Main function to receive arguments, begin processing them
+def main():
+    bayesNet = createNetwork()
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "m:g:j:p:")
+    except getopt.GetoptError as err:
+        # print help information and exit:
+        print(err) # will print something like "option -a not recognized"
+        sys.exit(2)
+    for o, a in opts:
+        if o in ("-p"):
+            setPrior(bayesNet, a[0], float(a[1:]))
+        elif o in ("-m"):
+            marginal = calcMarginal(bayesNet, a)
+            print(marginal)
+        elif o in ("-g"):
+            p = a.find("|")
+            conditional = calcConditional(bayesNet, a[:p], a[p+1:])
+            print(conditional)
+        elif o in ("-j"):
+            b = parseDist(a)
+            j = jointDist(bayesNet,b)
+            print(j)
+        else:
+            assert False, "unhandled option"
+		
+    # ...
+
+if __name__ == "__main__":
+    main()
+
+
