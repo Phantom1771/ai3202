@@ -176,8 +176,16 @@ def calcConditional(net, arg, con):
 	if arg[0] == '~':
 		notFlag = True
 		arg2 = arg[1]
+		if arg2 in con and arg not in con:
+			return 0
+		elif arg2 in con and arg in con:
+			return 1
 	else:
 		arg2 = arg
+		if arg2 in con and ("~" + arg2) not in con:
+			return 1
+		elif arg2 in con and ("~" + arg2) in con:
+			return 0
 	conList = parseVars(con)
 	if arg2 == "p":
 		node = net["pollution"]
@@ -222,8 +230,8 @@ def calc1Con(node, net, con):
 			return (calcConditional(net, con, arg)*calcMarginal(net, arg))/calcMarginal(net, con)
 		elif con2 == "d" or con2 == "x":
 			cond1 = calcConditional(net, arg, "c")*calcConditional(net, "c", con)
-			cond2 = calcConditonal(net, arg, "~c")*calcConditional(net, "~c", con)
-			return 
+			cond2 = calcConditional(net, arg, "~c")*calcConditional(net, "~c", con)
+			return cond1 + cond2
 	elif arg == "c":
 		if con2 == "p":
 			return calcConditional(net, arg, con+"s")*calcMarginal(net, "s") + calcConditional(net, arg, con + "~s")*calcMarginal(net, "~s")
